@@ -3,7 +3,9 @@ import Photos
 
 struct LibraryDashboard: View {
     @EnvironmentObject private var library: PhotoLibraryStore
+    @AppStorage("photoGroupingOrder") private var groupingOrder: PhotoGroupingOrder = .colorThenContent
     @State private var selectedColor: PhotoColorCategory?
+    @State private var selectedContent: PhotoContentCategory?
     @State private var showReanalysisConfirmation = false
 
     private var activeColor: PhotoColorCategory? {
@@ -13,9 +15,29 @@ struct LibraryDashboard: View {
         return library.availableColors.first
     }
 
+    private var activeContent: PhotoContentCategory? {
+        if let selectedContent, library.availableContents.contains(selectedContent) {
+            return selectedContent
+        }
+        return library.availableContents.first
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Classement")
+                        .font(.subheadline.weight(.semibold))
+                    Picker("Ordre de classement", selection: $groupingOrder) {
+                        ForEach(PhotoGroupingOrder.allCases) { order in
+                            Text(order.title).tag(order)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("groupingOrderPicker")
+                }
+                .padding(.horizontal)
+
                 if library.isScanning {
                     ScanProgressCard()
                         .padding(.horizontal)
@@ -37,10 +59,42 @@ struct LibraryDashboard: View {
                     .padding(.horizontal, 32)
                     .padding(.top, 70)
                 } else {
-                    ColorPickerStrip(selectedColor: $selectedColor)
+                    switch groupingOrder {
+                    case .colorThenContent:
+                        CategoryPickerStrip(
+                            title: "1. Couleur",
+                            categories: library.availableColors,
+                            selectedCategory: activeColor,
+                            onSelect: { selectedColor = $0 },
+                            categoryTitle: { $0.rawValue },
+                            count: { library.analyses(color: $0).count }
+                        ) { color in
+                            Circle()
+                                .fill(color.color)
+                                .stroke(.primary.opacity(0.12), lineWidth: 1)
+                                .frame(width: 20, height: 20)
+                        }
 
-                    if let color = activeColor {
-                        ContentGroups(color: color)
+                        if let color = activeColor {
+                            ContentGroups(color: color)
+                        }
+                    case .contentThenColor:
+                        CategoryPickerStrip(
+                            title: "1. Contenu",
+                            categories: library.availableContents,
+                            selectedCategory: activeContent,
+                            onSelect: { selectedContent = $0 },
+                            categoryTitle: { $0.rawValue },
+                            count: { library.analyses(content: $0).count }
+                        ) { content in
+                            Image(systemName: content.symbol)
+                                .foregroundStyle(.tint)
+                                .frame(width: 20, height: 20)
+                        }
+
+                        if let content = activeContent {
+                            ColorGroups(content: content)
+                        }
                     }
                 }
             }
@@ -114,33 +168,35 @@ private struct ScanProgressCard: View {
     }
 }
 
-private struct ColorPickerStrip: View {
-    @EnvironmentObject private var library: PhotoLibraryStore
-    @Binding var selectedColor: PhotoColorCategory?
+private struct CategoryPickerStrip<Category: Identifiable & Equatable, Icon: View>: View {
+    let title: String
+    let categories: [Category]
+    let selectedCategory: Category?
+    let onSelect: (Category) -> Void
+    let categoryTitle: (Category) -> String
+    let count: (Category) -> Int
+    let icon: (Category) -> Icon
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("1. Couleur")
+            Text(title)
                 .font(.title2.bold())
                 .padding(.horizontal)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    ForEach(library.availableColors) { color in
-                        let isSelected = (selectedColor ?? library.availableColors.first) == color
+                    ForEach(categories) { category in
+                        let isSelected = selectedCategory == category
                         Button {
                             withAnimation(.snappy) {
-                                selectedColor = color
+                                onSelect(category)
                             }
                         } label: {
                             HStack(spacing: 8) {
-                                Circle()
-                                    .fill(color.color)
-                                    .stroke(.primary.opacity(0.12), lineWidth: 1)
-                                    .frame(width: 20, height: 20)
-                                Text(color.rawValue)
+                                icon(category)
+                                Text(categoryTitle(category))
                                     .fontWeight(.semibold)
-                                Text("\(library.analyses(color: color).count)")
+                                Text("\(count(category))")
                                     .foregroundStyle(.secondary)
                             }
                             .padding(.horizontal, 14)
@@ -155,6 +211,7 @@ private struct ColorPickerStrip: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
                     }
                 }
                 .padding(.horizontal)
@@ -179,8 +236,10 @@ private struct ContentGroups: View {
                     NavigationLink {
                         PhotoGridView(color: color, content: content)
                     } label: {
-                        ContentGroupCard(
-                            content: content,
+                        PhotoGroupCard(
+                            title: content.rawValue,
+                            symbol: content.symbol,
+                            tint: .accentColor,
                             photos: library.analyses(color: color, content: content)
                         )
                     }
@@ -192,8 +251,41 @@ private struct ContentGroups: View {
     }
 }
 
-private struct ContentGroupCard: View {
+private struct ColorGroups: View {
+    @EnvironmentObject private var library: PhotoLibraryStore
     let content: PhotoContentCategory
+
+    private let columns = [GridItem(.adaptive(minimum: 155), spacing: 14)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("2. Couleur")
+                .font(.title2.bold())
+
+            LazyVGrid(columns: columns, spacing: 14) {
+                ForEach(library.colors(for: content)) { color in
+                    NavigationLink {
+                        PhotoGridView(color: color, content: content, groupingOrder: .contentThenColor)
+                    } label: {
+                        PhotoGroupCard(
+                            title: color.rawValue,
+                            symbol: "paintpalette.fill",
+                            tint: color.color,
+                            photos: library.analyses(color: color, content: content)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(.horizontal)
+    }
+}
+
+private struct PhotoGroupCard: View {
+    let title: String
+    let symbol: String
+    let tint: Color
     let photos: [PhotoAnalysis]
 
     private var visiblePhotos: [PhotoAnalysis] {
@@ -226,10 +318,10 @@ private struct ContentGroupCard: View {
             .frame(height: 112)
 
             HStack(spacing: 8) {
-                Image(systemName: content.symbol)
-                    .foregroundStyle(.tint)
+                Image(systemName: symbol)
+                    .foregroundStyle(tint)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(content.rawValue)
+                    Text(title)
                         .font(.headline)
                         .lineLimit(1)
                     Text("\(photos.count) photo\(photos.count > 1 ? "s" : "")")

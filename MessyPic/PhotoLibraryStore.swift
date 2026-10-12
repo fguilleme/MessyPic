@@ -33,20 +33,11 @@ final class PhotoLibraryStore: ObservableObject {
     }
 
     var availableColors: [PhotoColorCategory] {
-        let counts = Dictionary(grouping: analyses, by: \.color)
-            .mapValues(\.count)
+        colors()
+    }
 
-        return PhotoColorCategory.allCases
-            .filter { counts[$0, default: 0] > 0 }
-            .sorted { lhs, rhs in
-                let lhsCount = counts[lhs, default: 0]
-                let rhsCount = counts[rhs, default: 0]
-                if lhsCount == rhsCount {
-                    return PhotoColorCategory.allCases.firstIndex(of: lhs)! <
-                        PhotoColorCategory.allCases.firstIndex(of: rhs)!
-                }
-                return lhsCount > rhsCount
-        }
+    var availableContents: [PhotoContentCategory] {
+        contents()
     }
 
     static let preview: PhotoLibraryStore = {
@@ -125,16 +116,35 @@ final class PhotoLibraryStore: ObservableObject {
         await analyzeMissingPhotos()
     }
 
-    func analyses(color: PhotoColorCategory, content: PhotoContentCategory? = nil) -> [PhotoAnalysis] {
+    func analyses(color: PhotoColorCategory? = nil, content: PhotoContentCategory? = nil) -> [PhotoAnalysis] {
         analyses.filter { analysis in
-            analysis.color == color && (content == nil || analysis.content == content)
+            (color == nil || analysis.color == color) &&
+                (content == nil || analysis.content == content)
         }
     }
 
-    func contents(for color: PhotoColorCategory) -> [PhotoContentCategory] {
-        PhotoContentCategory.allCases.filter { content in
-            analyses.contains { $0.color == color && $0.content == content }
-        }
+    func contents(for color: PhotoColorCategory? = nil) -> [PhotoContentCategory] {
+        let counts = Dictionary(grouping: analyses(color: color), by: \.content).mapValues(\.count)
+        return rankedCategories(PhotoContentCategory.allCases, counts: counts)
+    }
+
+    func colors(for content: PhotoContentCategory? = nil) -> [PhotoColorCategory] {
+        let counts = Dictionary(grouping: analyses(content: content), by: \.color).mapValues(\.count)
+        return rankedCategories(PhotoColorCategory.allCases, counts: counts)
+    }
+
+    private func rankedCategories<Category: Hashable>(
+        _ categories: [Category],
+        counts: [Category: Int]
+    ) -> [Category] {
+        categories.enumerated()
+            .filter { counts[$0.element, default: 0] > 0 }
+            .sorted { lhs, rhs in
+                let lhsCount = counts[lhs.element, default: 0]
+                let rhsCount = counts[rhs.element, default: 0]
+                return lhsCount == rhsCount ? lhs.offset < rhs.offset : lhsCount > rhsCount
+            }
+            .map(\.element)
     }
 
     func image(identifier: String, targetSize: CGSize) async -> UIImage? {

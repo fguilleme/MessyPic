@@ -4,6 +4,7 @@ struct PhotoGridView: View {
     @EnvironmentObject private var library: PhotoLibraryStore
     let color: PhotoColorCategory
     let content: PhotoContentCategory
+    var groupingOrder: PhotoGroupingOrder = .colorThenContent
 
     private let columns = [
         GridItem(.flexible(), spacing: 2),
@@ -29,8 +30,8 @@ struct PhotoGridView: View {
                 }
             }
         }
-        .navigationTitle(content.rawValue)
-        .navigationSubtitle("\(color.rawValue) · \(photos.count) photo\(photos.count > 1 ? "s" : "")")
+        .navigationTitle(groupingOrder == .colorThenContent ? content.rawValue : color.rawValue)
+        .navigationSubtitle("\(groupingOrder == .colorThenContent ? color.rawValue : content.rawValue) · \(photos.count) photo\(photos.count > 1 ? "s" : "")")
         .background(Color(.systemBackground))
     }
 }

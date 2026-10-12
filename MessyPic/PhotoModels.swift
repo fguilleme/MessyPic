@@ -1,5 +1,19 @@
 import SwiftUI
 
+enum PhotoGroupingOrder: String, CaseIterable, Identifiable {
+    case colorThenContent
+    case contentThenColor
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .colorThenContent: "Couleur → Contenu"
+        case .contentThenColor: "Contenu → Couleur"
+        }
+    }
+}
+
 enum PhotoColorCategory: String, CaseIterable, Codable, Identifiable, Sendable {
     case red = "Rouge"
     case orange = "Orange"

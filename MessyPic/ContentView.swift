@@ -58,7 +58,7 @@ private struct PhotoAccessView: View {
                     .font(.largeTitle.bold())
                     .multilineTextAlignment(.center)
 
-                Text("MessyPic classe votre photothèque par couleur, puis par contenu, directement sur votre iPhone.")
+                Text("MessyPic classe votre photothèque par couleur et par contenu, dans l’ordre de votre choix, directement sur votre iPhone.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
