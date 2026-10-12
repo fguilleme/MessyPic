@@ -79,7 +79,7 @@ enum PhotoContentCategory: String, CaseIterable, Codable, Identifiable, Sendable
 }
 
 struct PhotoAnalysis: Codable, Hashable, Identifiable, Sendable {
-    static let currentAnalysisVersion = 4
+    static let currentAnalysisVersion = 5
 
     let assetIdentifier: String
     let color: PhotoColorCategory

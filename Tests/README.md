@@ -7,6 +7,8 @@ xcrun swiftc -module-cache-path /tmp/MessyPicSwiftModuleCache -swift-version 5 M
 /tmp/MessyPicPhotoAnalyzerChecks
 ```
 
-The checks cover subject-mask alignment for portrait and landscape images, invalid-mask fallback, turquoise classification, priority of `night_sky` over generic sky and document labels, and old/new cache decoding.
+The checks cover subject-mask alignment for portrait and landscape images, invalid-mask fallback, saturated yellow clothing against muted skin tones, neutral/brown subjects, turquoise classification, priority of `night_sky` over generic sky and document labels, and old/new cache decoding.
 
 An optional argument accepts the original 590 × 1280 screenshot of the turquoise dress supplied in this conversation. It crops the photograph in memory and verifies the full Vision pipeline changes its category to Turquoise. Vision must have access to the system model services for this integration check.
+
+For the yellow hoodie screenshot, pass its path followed by `Jaune 787`. These optional arguments set the expected category and the photograph's height below the 170-pixel navigation bar.

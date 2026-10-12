@@ -50,6 +50,27 @@ struct PhotoAnalyzerChecks {
     static func main() throws {
         checkMask(width: 160, height: 240)
         checkMask(width: 240, height: 160)
+        // Measured palette of the yellow hoodie portrait: beige shades aggregate
+        // to Orange by area, although the yellow garment is the distinctive color.
+        let hoodiePalette = [
+            PrincipalColor(red: 232 / 255, green: 205 / 255, blue: 100 / 255, proportion: 0.31),
+            PrincipalColor(red: 213 / 255, green: 188 / 255, blue: 169 / 255, proportion: 0.24),
+            PrincipalColor(red: 190 / 255, green: 161 / 255, blue: 130 / 255, proportion: 0.22),
+            PrincipalColor(red: 161 / 255, green: 132 / 255, blue: 90 / 255, proportion: 0.145),
+            PrincipalColor(red: 97 / 255, green: 79 / 255, blue: 60 / 255, proportion: 0.085)
+        ]
+        precondition(PhotoAnalyzer.dominantColor(in: image(), principalColors: hoodiePalette) == .orange)
+        precondition(PhotoAnalyzer.dominantColor(in: image(), principalColors: hoodiePalette, preferDistinctColors: true) == .yellow)
+        let graySubject = [
+            PrincipalColor(red: 0.4, green: 0.4, blue: 0.4, proportion: 0.65),
+            PrincipalColor(red: 1, green: 1, blue: 0, proportion: 0.35)
+        ]
+        precondition(PhotoAnalyzer.dominantColor(in: image(), principalColors: graySubject, preferDistinctColors: true) == .gray)
+        let brownSubject = [
+            PrincipalColor(red: 0.55, green: 0.38, blue: 0.25, proportion: 0.9),
+            PrincipalColor(red: 1, green: 0, blue: 0, proportion: 0.1)
+        ]
+        precondition(PhotoAnalyzer.dominantColor(in: image(), principalColors: brownSubject, preferDistinctColors: true) == .brown)
         let night = [
             VisionResult(identifier: "outdoor", confidence: 0.63),
             VisionResult(identifier: "sky", confidence: 0.63),
@@ -74,17 +95,27 @@ struct PhotoAnalyzerChecks {
         )
         let restored = try JSONDecoder().decode(PhotoAnalysis.self, from: JSONEncoder().encode(updated))
         precondition(restored == updated)
-        print("PASS: subject masks in both orientations, global fallback, turquoise, sky classification, cache migration and round trip")
+        print("PASS: masks, global fallback, vivid yellow over beige, neutral/brown subjects, turquoise, sky classification, cache migration and round trip")
 
         if let path = CommandLine.arguments.dropFirst().first {
             let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil)!
             let screenshot = CGImageSourceCreateImageAtIndex(source, 0, nil)!
-            let photo = screenshot.cropping(to: CGRect(x: 0, y: 170, width: screenshot.width, height: 1070))!
+            let expected = CommandLine.arguments.count > 2
+                ? PhotoColorCategory(rawValue: CommandLine.arguments[2])! : .turquoise
+            let height = CommandLine.arguments.count > 3
+                ? Int(CommandLine.arguments[3])! : 1070
+            let photo = screenshot.cropping(to: CGRect(x: 0, y: 170, width: screenshot.width, height: height))!
             let result = PhotoAnalyzer.analyze(photo)
             print("Real photo: \(result.color.rawValue), \(result.content.rawValue), subject clusters: \(result.subjectColors.count)")
             print("Global: \(result.principalColors.map { "\($0.hex) \(Int($0.proportion * 100))%" })")
             print("Subject: \(result.subjectColors.map { "\($0.hex) \(Int($0.proportion * 100))%" })")
-            precondition(result.color == .turquoise && !result.subjectColors.isEmpty)
+            for sample in result.subjectColors {
+                let maximum = max(sample.red, sample.green, sample.blue)
+                let minimum = min(sample.red, sample.green, sample.blue)
+                let saturation = maximum == 0 ? 0 : (maximum - minimum) / maximum
+                print("\(PhotoAnalyzer.colorCategory(red: sample.red, green: sample.green, blue: sample.blue).rawValue): \(sample.proportion), saturation: \(saturation)")
+            }
+            precondition(result.color == expected && !result.subjectColors.isEmpty)
         }
     }
 }

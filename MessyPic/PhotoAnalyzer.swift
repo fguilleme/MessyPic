@@ -25,7 +25,8 @@ enum PhotoAnalyzer {
         }
         let color = dominantColor(
             in: cgImage,
-            principalColors: subjectColors.isEmpty ? principalColors : subjectColors
+            principalColors: subjectColors.isEmpty ? principalColors : subjectColors,
+            preferDistinctColors: !subjectColors.isEmpty
         )
         let best = observations.first
         let label = best?
@@ -223,10 +224,12 @@ enum PhotoAnalyzer {
 
     nonisolated static func dominantColor(
         in image: CGImage,
-        principalColors: [PrincipalColor]
+        principalColors: [PrincipalColor],
+        preferDistinctColors: Bool = false
     ) -> PhotoColorCategory {
         if !principalColors.isEmpty {
             var scores: [PhotoColorCategory: Double] = [:]
+            var perceptualScores: [PhotoColorCategory: Double] = [:]
             for sample in principalColors {
                 let category = colorCategory(
                     red: sample.red,
@@ -234,11 +237,30 @@ enum PhotoAnalyzer {
                     blue: sample.blue
                 )
                 scores[category, default: 0] += sample.proportion
+                let maximum = max(sample.red, sample.green, sample.blue)
+                let minimum = min(sample.red, sample.green, sample.blue)
+                let saturation = maximum == 0 ? 0 : (maximum - minimum) / maximum
+                // Muted skin/hair shades should not outweigh a vivid garment simply
+                // because several unrelated beige shades fall in the orange family.
+                let weight = 0.2 + 0.8 * saturation * saturation
+                perceptualScores[category, default: 0] += sample.proportion * weight
             }
 
             if let strongest = PhotoColorCategory.allCases.max(by: {
                 scores[$0, default: 0] < scores[$1, default: 0]
             }), scores[strongest, default: 0] > 0 {
+                if preferDistinctColors {
+                    let isNeutral = strongest == .white || strongest == .gray || strongest == .black
+                    // Preserve clearly neutral subjects even if a small accent is saturated.
+                    if isNeutral, scores[strongest, default: 0] >= 0.6 {
+                        return strongest
+                    }
+                    if let perceptual = PhotoColorCategory.allCases.max(by: {
+                        perceptualScores[$0, default: 0] < perceptualScores[$1, default: 0]
+                    }) {
+                        return perceptual
+                    }
+                }
                 return strongest
             }
         }
