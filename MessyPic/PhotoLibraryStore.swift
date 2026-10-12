@@ -256,7 +256,8 @@ final class PhotoLibraryStore: ObservableObject {
                     confidence: result.confidence,
                     creationDate: asset.creationDate,
                     visionResults: result.visionResults,
-                    principalColors: result.principalColors
+                    principalColors: result.principalColors,
+                    subjectColors: result.subjectColors
                 )
                 if let index = analyses.firstIndex(where: { $0.assetIdentifier == asset.localIdentifier }) {
                     analyses[index] = analysis

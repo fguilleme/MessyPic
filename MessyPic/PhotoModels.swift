@@ -5,6 +5,7 @@ enum PhotoColorCategory: String, CaseIterable, Codable, Identifiable, Sendable {
     case orange = "Orange"
     case yellow = "Jaune"
     case green = "Vert"
+    case turquoise = "Turquoise"
     case blue = "Bleu"
     case purple = "Violet"
     case pink = "Rose"
@@ -21,6 +22,7 @@ enum PhotoColorCategory: String, CaseIterable, Codable, Identifiable, Sendable {
         case .orange: .orange
         case .yellow: .yellow
         case .green: .green
+        case .turquoise: Color(red: 0.15, green: 0.65, blue: 0.68)
         case .blue: .blue
         case .purple: .purple
         case .pink: .pink
@@ -37,6 +39,7 @@ enum PhotoContentCategory: String, CaseIterable, Codable, Identifiable, Sendable
     case animals = "Animaux"
     case food = "Nourriture"
     case nature = "Nature"
+    case starrySky = "Ciel étoilé"
     case transport = "Transport"
     case documents = "Documents"
     case architecture = "Architecture"
@@ -51,6 +54,7 @@ enum PhotoContentCategory: String, CaseIterable, Codable, Identifiable, Sendable
         case .animals: "pawprint.fill"
         case .food: "fork.knife"
         case .nature: "leaf.fill"
+        case .starrySky: "sparkles"
         case .transport: "car.fill"
         case .documents: "doc.text.fill"
         case .architecture: "building.2.fill"
@@ -61,7 +65,7 @@ enum PhotoContentCategory: String, CaseIterable, Codable, Identifiable, Sendable
 }
 
 struct PhotoAnalysis: Codable, Hashable, Identifiable, Sendable {
-    static let currentAnalysisVersion = 3
+    static let currentAnalysisVersion = 4
 
     let assetIdentifier: String
     let color: PhotoColorCategory
@@ -71,6 +75,7 @@ struct PhotoAnalysis: Codable, Hashable, Identifiable, Sendable {
     let creationDate: Date?
     let visionResults: [VisionResult]
     let principalColors: [PrincipalColor]
+    let subjectColors: [PrincipalColor]
     let analysisVersion: Int
 
     var id: String { assetIdentifier }
@@ -84,6 +89,7 @@ struct PhotoAnalysis: Codable, Hashable, Identifiable, Sendable {
         creationDate: Date?,
         visionResults: [VisionResult] = [],
         principalColors: [PrincipalColor] = [],
+        subjectColors: [PrincipalColor] = [],
         analysisVersion: Int = PhotoAnalysis.currentAnalysisVersion
     ) {
         self.assetIdentifier = assetIdentifier
@@ -94,6 +100,7 @@ struct PhotoAnalysis: Codable, Hashable, Identifiable, Sendable {
         self.creationDate = creationDate
         self.visionResults = visionResults
         self.principalColors = principalColors
+        self.subjectColors = subjectColors
         self.analysisVersion = analysisVersion
     }
 
@@ -107,6 +114,7 @@ struct PhotoAnalysis: Codable, Hashable, Identifiable, Sendable {
         creationDate = try container.decodeIfPresent(Date.self, forKey: .creationDate)
         visionResults = try container.decodeIfPresent([VisionResult].self, forKey: .visionResults) ?? []
         principalColors = try container.decodeIfPresent([PrincipalColor].self, forKey: .principalColors) ?? []
+        subjectColors = try container.decodeIfPresent([PrincipalColor].self, forKey: .subjectColors) ?? []
         analysisVersion = try container.decodeIfPresent(Int.self, forKey: .analysisVersion) ?? 1
     }
 }
@@ -118,6 +126,7 @@ struct AnalysisResult: Sendable {
     let confidence: Double
     let visionResults: [VisionResult]
     let principalColors: [PrincipalColor]
+    let subjectColors: [PrincipalColor]
 }
 
 struct VisionResult: Codable, Hashable, Identifiable, Sendable {

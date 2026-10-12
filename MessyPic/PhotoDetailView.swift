@@ -10,6 +10,10 @@ struct PhotoDetailView: View {
     @State private var shareItems: [Any] = []
     @State private var showShareError = false
 
+    private var currentPhoto: PhotoAnalysis {
+        library.analyses.first { $0.assetIdentifier == photo.assetIdentifier } ?? photo
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 18) {
@@ -31,14 +35,14 @@ struct PhotoDetailView: View {
                 VStack(spacing: 12) {
                     DetailRow(
                         icon: "paintpalette.fill",
-                        title: "Couleur",
-                        value: photo.color.rawValue,
-                        tint: photo.color.color
+                        title: currentPhoto.subjectColors.isEmpty ? "Couleur" : "Couleur du sujet",
+                        value: currentPhoto.color.rawValue,
+                        tint: currentPhoto.color.color
                     )
                     DetailRow(
-                        icon: photo.content.symbol,
+                        icon: currentPhoto.content.symbol,
                         title: "Contenu",
-                        value: photo.content.rawValue,
+                        value: currentPhoto.content.rawValue,
                         tint: .accentColor
                     )
                     if let date = photo.creationDate {
@@ -50,8 +54,8 @@ struct PhotoDetailView: View {
                         )
                     }
 
-                    PrincipalColorsCard(photo: photo)
-                    VisionDetails(photo: photo)
+                    PrincipalColorsCard(photo: currentPhoto)
+                    VisionDetails(photo: currentPhoto)
                 }
                 .padding(.horizontal)
 
@@ -78,7 +82,7 @@ struct PhotoDetailView: View {
                 .padding(.bottom, 24)
             }
         }
-        .navigationTitle(photo.label)
+        .navigationTitle(currentPhoto.label)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -122,36 +126,70 @@ struct PhotoDetailView: View {
 private struct PrincipalColorsCard: View {
     let photo: PhotoAnalysis
 
+    @State private var isGlobalExpanded = false
+
+    private var colors: [PrincipalColor] {
+        photo.subjectColors.isEmpty ? photo.principalColors : photo.subjectColors
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Couleurs principales", systemImage: "paintpalette")
+            Label(
+                photo.subjectColors.isEmpty ? "Couleurs principales" : "Couleurs du sujet",
+                systemImage: "paintpalette"
+            )
                 .font(.subheadline.weight(.semibold))
 
-            if photo.principalColors.isEmpty {
+            if colors.isEmpty {
                 HStack(spacing: 9) {
                     ColorSwatch(color: photo.color.color, size: 28)
                     Text(photo.color.rawValue)
                         .font(.caption)
                 }
             } else {
-                HStack(spacing: 14) {
-                    ForEach(photo.principalColors) { sample in
-                        VStack(spacing: 5) {
-                            ColorSwatch(color: sample.color, size: 30)
-                            Text(sample.proportion, format: .percent.precision(.fractionLength(0)))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("Couleur \(sample.hex), \(sample.proportion.formatted(.percent.precision(.fractionLength(0))))")
-                    }
+                PaletteSwatches(colors: colors)
+            }
+
+            if !photo.subjectColors.isEmpty {
+                Text("Proportions dans le sujet détecté")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                DisclosureGroup(isExpanded: $isGlobalExpanded) {
+                    PaletteSwatches(colors: photo.principalColors)
+                        .padding(.top, 10)
+                } label: {
+                    Text("Couleurs de toute la photo")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+private struct PaletteSwatches: View {
+    let colors: [PrincipalColor]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 14) {
+                ForEach(colors) { sample in
+                    VStack(spacing: 5) {
+                        ColorSwatch(color: sample.color, size: 30)
+                        Text(sample.proportion, format: .percent.precision(.fractionLength(0)))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Couleur \(sample.hex), \(sample.proportion.formatted(.percent.precision(.fractionLength(0))))")
+                }
+            }
+        }
     }
 }
 

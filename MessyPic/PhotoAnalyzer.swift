@@ -5,15 +5,28 @@ import Vision
 enum PhotoAnalyzer {
     nonisolated static func analyze(_ cgImage: CGImage) -> AnalysisResult {
         let principalColors = principalColors(in: cgImage)
-        let color = dominantColor(in: cgImage, principalColors: principalColors)
         let request = VNClassifyImageRequest()
         let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up)
         try? handler.perform([request])
 
         let observations = (request.results ?? [])
             .filter { $0.confidence >= 0.08 }
+        let classifications = observations.map {
+            VisionResult(identifier: $0.identifier, confidence: Double($0.confidence))
+        }
 
-        let category = contentCategory(from: observations)
+        let category = contentCategory(from: classifications)
+        let subjectColors: [PrincipalColor]
+        switch category {
+        case .people, .animals, .food, .transport, .objects:
+            subjectColors = foregroundColors(in: cgImage, handler: handler)
+        case .nature, .starrySky, .documents, .architecture, .other:
+            subjectColors = []
+        }
+        let color = dominantColor(
+            in: cgImage,
+            principalColors: subjectColors.isEmpty ? principalColors : subjectColors
+        )
         let best = observations.first
         let label = best?
             .identifier
@@ -21,12 +34,7 @@ enum PhotoAnalyzer {
             .first?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .capitalized ?? category.rawValue
-        let visionResults = observations.prefix(8).map {
-            VisionResult(
-                identifier: $0.identifier,
-                confidence: Double($0.confidence)
-            )
-        }
+        let visionResults = Array(classifications.prefix(8))
 
         return AnalysisResult(
             color: color,
@@ -34,16 +42,38 @@ enum PhotoAnalyzer {
             label: label,
             confidence: Double(best?.confidence ?? 0),
             visionResults: visionResults,
-            principalColors: principalColors
+            principalColors: principalColors,
+            subjectColors: subjectColors
         )
     }
 
-    nonisolated private static func principalColors(
+    nonisolated private static func foregroundColors(
         in image: CGImage,
-        maximumCount: Int = 5
+        handler: VNImageRequestHandler
     ) -> [PrincipalColor] {
-        let width = 28
-        let height = 28
+        let request = VNGenerateForegroundInstanceMaskRequest()
+        do {
+            try handler.perform([request])
+            guard let observation = request.results?.first,
+                  !observation.allInstances.isEmpty else { return [] }
+            let buffer = try observation.generateScaledMaskForImage(
+                forInstances: observation.allInstances,
+                from: handler
+            )
+            let maskImage = CIImage(cvPixelBuffer: buffer)
+            guard let mask = CIContext().createCGImage(maskImage, from: maskImage.extent) else {
+                return []
+            }
+            return principalColors(in: image, subjectMask: mask)
+        } catch {
+            return []
+        }
+    }
+
+    // Render image and mask with the same transform so portrait and landscape pixels align.
+    nonisolated private static func sampledPixels(in image: CGImage) -> [UInt8]? {
+        let width = 48
+        let height = 48
         let bytesPerRow = width * 4
         var pixels = [UInt8](repeating: 0, count: height * bytesPerRow)
 
@@ -54,21 +84,43 @@ enum PhotoAnalyzer {
             bitsPerComponent: 8,
             bytesPerRow: bytesPerRow,
             space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return [] }
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue |
+                CGBitmapInfo.byteOrder32Big.rawValue
+        ) else { return nil }
 
         context.interpolationQuality = .medium
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return pixels
+    }
+
+    nonisolated static func principalColors(
+        in image: CGImage,
+        subjectMask: CGImage? = nil,
+        maximumCount: Int = 5
+    ) -> [PrincipalColor] {
+        guard let pixels = sampledPixels(in: image) else { return [] }
+        let maskPixels = subjectMask.flatMap { sampledPixels(in: $0) }
+        guard subjectMask == nil || maskPixels != nil else { return [] }
 
         let samples: [(Double, Double, Double)] = stride(from: 0, to: pixels.count, by: 4).compactMap { index in
             guard pixels[index + 3] > 127 else { return nil }
+            // Exclude uncertain edges instead of blending them with the background.
+            if let maskPixels, maskPixels[index] < 192 { return nil }
+            let alpha = Double(pixels[index + 3])
             return (
-                Double(pixels[index]) / 255,
-                Double(pixels[index + 1]) / 255,
-                Double(pixels[index + 2]) / 255
+                Double(pixels[index]) / alpha,
+                Double(pixels[index + 1]) / alpha,
+                Double(pixels[index + 2]) / alpha
             )
         }
         guard !samples.isEmpty else { return [] }
+        if subjectMask != nil {
+            let opaqueCount = stride(from: 0, to: pixels.count, by: 4)
+                .filter { pixels[$0 + 3] > 127 }.count
+            let coverage = Double(samples.count) / Double(max(opaqueCount, 1))
+            // Tiny fragments or an almost full-image mask do not isolate a useful subject.
+            guard samples.count >= 24, coverage >= 0.05, coverage <= 0.95 else { return [] }
+        }
 
         var buckets: [Int: (red: Double, green: Double, blue: Double, count: Int)] = [:]
         for sample in samples {
@@ -169,7 +221,7 @@ enum PhotoAnalyzer {
         return red * red + green * green + blue * blue
     }
 
-    nonisolated private static func dominantColor(
+    nonisolated static func dominantColor(
         in image: CGImage,
         principalColors: [PrincipalColor]
     ) -> PhotoColorCategory {
@@ -215,7 +267,7 @@ enum PhotoAnalyzer {
         return colorCategory(red: red, green: green, blue: blue)
     }
 
-    nonisolated private static func colorCategory(
+    nonisolated static func colorCategory(
         red: Double,
         green: Double,
         blue: Double
@@ -228,6 +280,7 @@ enum PhotoAnalyzer {
 
         if luminance < 0.16 { return .black }
         if saturation < 0.2, luminance > 0.72 { return .white }
+        if saturation < 0.18 { return .gray }
 
         var hue: Double
         if delta == 0 {
@@ -244,22 +297,29 @@ enum PhotoAnalyzer {
         let isDarkOrangeBrown = hue >= 15 && hue < 50 && maximum < 0.72
         let isMutedRedBrown = (hue < 15 || hue >= 345) && maximum < 0.72 && saturation < 0.55
         if isDarkOrangeBrown || isMutedRedBrown { return .brown }
-        if saturation < 0.18 { return .gray }
 
         switch hue {
         case 0..<15, 345..<360: return .red
         case 15..<45: return .orange
         case 45..<70: return .yellow
         case 70..<165: return .green
-        case 165..<255: return .blue
+        case 165..<195: return .turquoise
+        case 195..<255: return .blue
         case 255..<295: return .purple
         default: return .pink
         }
     }
 
-    nonisolated private static func contentCategory(
-        from observations: [VNClassificationObservation]
+    nonisolated static func contentCategory(
+        from observations: [VisionResult]
     ) -> PhotoContentCategory {
+        // Vision's taxonomy exposes night_sky, rather than a separate starry-sky label.
+        if observations.contains(where: {
+            $0.identifier.lowercased() == "night_sky" && $0.confidence >= 0.2
+        }) {
+            return .starrySky
+        }
+
         let rules: [(PhotoContentCategory, [String])] = [
             (.people, ["person", "people", "human", "face", "portrait", "selfie", "baby", "child", "boy", "girl", "man", "woman", "bride", "groom"]),
             (.animals, ["animal", "dog", "cat", "bird", "horse", "fish", "insect", "wildlife", "mammal", "pet"]),
