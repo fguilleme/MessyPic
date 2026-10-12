@@ -41,12 +41,6 @@ struct PhotoDetailView: View {
                         value: photo.content.rawValue,
                         tint: .accentColor
                     )
-                    DetailRow(
-                        icon: "viewfinder",
-                        title: "Reconnu par Vision",
-                        value: photo.label,
-                        tint: .purple
-                    )
                     if let date = photo.creationDate {
                         DetailRow(
                             icon: "calendar",
@@ -55,6 +49,9 @@ struct PhotoDetailView: View {
                             tint: .orange
                         )
                     }
+
+                    PrincipalColorsCard(photo: photo)
+                    VisionDetails(photo: photo)
                 }
                 .padding(.horizontal)
 
@@ -119,6 +116,98 @@ struct PhotoDetailView: View {
             }
             isPreparingShare = false
         }
+    }
+}
+
+private struct PrincipalColorsCard: View {
+    let photo: PhotoAnalysis
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Couleurs principales", systemImage: "paintpalette")
+                .font(.subheadline.weight(.semibold))
+
+            if photo.principalColors.isEmpty {
+                HStack(spacing: 9) {
+                    ColorSwatch(color: photo.color.color, size: 28)
+                    Text(photo.color.rawValue)
+                        .font(.caption)
+                }
+            } else {
+                HStack(spacing: 14) {
+                    ForEach(photo.principalColors) { sample in
+                        VStack(spacing: 5) {
+                            ColorSwatch(color: sample.color, size: 30)
+                            Text(sample.proportion, format: .percent.precision(.fractionLength(0)))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Couleur \(sample.hex), \(sample.proportion.formatted(.percent.precision(.fractionLength(0))))")
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+private struct VisionDetails: View {
+    let photo: PhotoAnalysis
+
+    @State private var isExpanded = false
+
+    private var visionResults: [VisionResult] {
+        if photo.visionResults.isEmpty {
+            return [VisionResult(identifier: photo.label, confidence: photo.confidence)]
+        }
+        return photo.visionResults
+    }
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 7) {
+                ForEach(visionResults) { result in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(result.identifier)
+                            .lineLimit(2)
+                        Spacer(minLength: 12)
+                        Text(result.confidence, format: .percent.precision(.fractionLength(0)))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+            }
+            .font(.caption2)
+            .padding(.top, 12)
+        } label: {
+            Label("Résultats de Vision", systemImage: "viewfinder")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .tint(.purple)
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+        .accessibilityHint(isExpanded ? "Masque les résultats" : "Affiche les résultats détaillés de Vision")
+    }
+}
+
+private struct ColorSwatch: View {
+    let color: Color
+    let size: CGFloat
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: size, height: size)
+            .overlay {
+                Circle()
+                    .stroke(.primary.opacity(0.16), lineWidth: 1)
+            }
+            .accessibilityHidden(true)
     }
 }
 

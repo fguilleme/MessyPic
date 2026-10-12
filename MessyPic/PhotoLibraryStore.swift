@@ -33,8 +33,19 @@ final class PhotoLibraryStore: ObservableObject {
     }
 
     var availableColors: [PhotoColorCategory] {
-        PhotoColorCategory.allCases.filter { color in
-            analyses.contains { $0.color == color }
+        let counts = Dictionary(grouping: analyses, by: \.color)
+            .mapValues(\.count)
+
+        return PhotoColorCategory.allCases
+            .filter { counts[$0, default: 0] > 0 }
+            .sorted { lhs, rhs in
+                let lhsCount = counts[lhs, default: 0]
+                let rhsCount = counts[rhs, default: 0]
+                if lhsCount == rhsCount {
+                    return PhotoColorCategory.allCases.firstIndex(of: lhs)! <
+                        PhotoColorCategory.allCases.firstIndex(of: rhs)!
+                }
+                return lhsCount > rhsCount
         }
     }
 
@@ -212,7 +223,14 @@ final class PhotoLibraryStore: ObservableObject {
     private func analyzeMissingPhotos() async {
         guard !isScanning else { return }
 
-        let completed = Set(analyses.map(\.assetIdentifier))
+        let completed = Set(
+            analyses
+                .filter {
+                    !$0.principalColors.isEmpty &&
+                        $0.analysisVersion >= PhotoAnalysis.currentAnalysisVersion
+                }
+                .map(\.assetIdentifier)
+        )
         let missingAssets = assetsByIdentifier.values
             .filter { !completed.contains($0.localIdentifier) }
             .sorted { ($0.creationDate ?? .distantPast) > ($1.creationDate ?? .distantPast) }
@@ -236,9 +254,15 @@ final class PhotoLibraryStore: ObservableObject {
                     content: result.content,
                     label: result.label,
                     confidence: result.confidence,
-                    creationDate: asset.creationDate
+                    creationDate: asset.creationDate,
+                    visionResults: result.visionResults,
+                    principalColors: result.principalColors
                 )
-                analyses.append(analysis)
+                if let index = analyses.firstIndex(where: { $0.assetIdentifier == asset.localIdentifier }) {
+                    analyses[index] = analysis
+                } else {
+                    analyses.append(analysis)
+                }
                 analyses.sort { ($0.creationDate ?? .distantPast) > ($1.creationDate ?? .distantPast) }
             }
 
